@@ -4,12 +4,34 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: app
-    environment:
-      - NODE_ENV=production
+    restart: unless-stopped
     ports:
       - "3000:3000"
+    environment:
+      - NODE_ENV=production
     healthcheck:
       test: [ "CMD", "curl", "-f", "http://localhost:3000/health" ]
       interval: 10s
       timeout: 5s
       retries: 5
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: node-exporter
+    restart: unless-stopped
+    ports:
+      - "9100:9100"
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--path.rootfs=/rootfs'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    healthcheck:
+      test: [ "CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9100/metrics" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
