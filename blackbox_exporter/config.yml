@@ -1,0 +1,160 @@
+modules:
+  # HTTP 2xx probe - checks if endpoint returns success status
+  http_2xx:
+    prober: http
+    timeout: 5s
+    http:
+      valid_http_versions: ["HTTP/1.1", "HTTP/2.0"]
+      valid_status_codes: []  # Defaults to 2xx
+      method: GET
+      preferred_ip_protocol: "ip4"
+      follow_redirects: true
+      fail_if_ssl: false
+      fail_if_not_ssl: false
+
+  # HTTP POST probe with custom body
+  http_post_2xx:
+    prober: http
+    timeout: 5s
+    http:
+      method: POST
+      headers:
+        Content-Type: application/json
+      body: '{"status":"check"}'
+      valid_status_codes: [200, 201, 202]
+
+  # HTTPS probe with SSL verification
+  http_2xx_ssl:
+    prober: http
+    timeout: 5s
+    http:
+      valid_http_versions: ["HTTP/1.1", "HTTP/2.0"]
+      method: GET
+      preferred_ip_protocol: "ip4"
+      follow_redirects: true
+      fail_if_ssl: false
+      fail_if_not_ssl: true
+      tls_config:
+        insecure_skip_verify: false
+
+  # HTTP probe that expects specific status codes
+  http_4xx:
+    prober: http
+    timeout: 5s
+    http:
+      valid_status_codes: [400, 401, 403, 404]
+      method: GET
+      preferred_ip_protocol: "ip4"
+
+  # HTTP probe with basic authentication
+  http_2xx_basic_auth:
+    prober: http
+    timeout: 5s
+    http:
+      method: GET
+      valid_status_codes: [200]
+      basic_auth:
+        username: "username"
+        password: "password"
+
+  # HTTP probe with custom headers
+  http_2xx_custom_headers:
+    prober: http
+    timeout: 5s
+    http:
+      method: GET
+      headers:
+        Authorization: "Bearer token"
+        User-Agent: "Blackbox-Exporter"
+      valid_status_codes: [200]
+
+  # TCP connectivity probe
+  tcp_connect:
+    prober: tcp
+    timeout: 5s
+    tcp:
+      preferred_ip_protocol: "ip4"
+
+  # TCP probe with TLS
+  tcp_connect_tls:
+    prober: tcp
+    timeout: 5s
+    tcp:
+      tls: true
+      tls_config:
+        insecure_skip_verify: false
+
+  # ICMP ping probe
+  icmp:
+    prober: icmp
+    timeout: 5s
+    icmp:
+      preferred_ip_protocol: "ip4"
+
+  # DNS probe - checks DNS resolution
+  dns_tcp:
+    prober: dns
+    timeout: 5s
+    dns:
+      transport_protocol: "tcp"
+      preferred_ip_protocol: "ip4"
+      query_name: "example.com"
+
+  dns_udp:
+    prober: dns
+    timeout: 5s
+    dns:
+      transport_protocol: "udp"
+      preferred_ip_protocol: "ip4"
+      query_name: "example.com"
+
+  # gRPC health check
+  grpc:
+    prober: grpc
+    timeout: 5s
+    grpc:
+      tls: false
+      preferred_ip_protocol: "ip4"
+
+  grpc_tls:
+    prober: grpc
+    timeout: 5s
+    grpc:
+      tls: true
+      tls_config:
+        insecure_skip_verify: false
+
+  # HTTP probe that checks for specific content
+  http_2xx_with_body_match:
+    prober: http
+    timeout: 5s
+    http:
+      method: GET
+      valid_status_codes: [200]
+      fail_if_body_not_matches_regexp:
+        - "healthy"
+        - "status.*ok"
+
+  # HTTP probe that fails if specific content is found
+  http_2xx_without_body_match:
+    prober: http
+    timeout: 5s
+    http:
+      method: GET
+      valid_status_codes: [200]
+      fail_if_body_matches_regexp:
+        - "error"
+        - "exception"
+        - "failed"
+
+  # API health endpoint probe
+  api_health:
+    prober: http
+    timeout: 5s
+    http:
+      method: GET
+      valid_status_codes: [200]
+      headers:
+        Accept: "application/json"
+      fail_if_body_not_matches_regexp:
+        - '"status"\s*:\s*"(ok|healthy|up)"'
