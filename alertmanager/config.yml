@@ -1,0 +1,244 @@
+global:
+  # The smarthost and SMTP sender used for mail notifications.
+  smtp_smarthost: 'smtp.gmail.com:587'
+  smtp_from: 'alertmanager@example.com'
+  smtp_auth_username: 'your-email@gmail.com'
+  smtp_auth_password: 'your-app-password'
+  smtp_require_tls: true
+
+  # Slack webhook URL
+  slack_api_url: 'https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK'
+
+  # Default notification timeout
+  resolve_timeout: 5m
+
+# Templates for notifications
+templates:
+  - '/etc/alertmanager/templates/*.tmpl'
+
+# The root route with all parameters
+route:
+  # Default receiver
+  receiver: 'default'
+  
+  # Group alerts by these labels
+  group_by: ['alertname', 'cluster', 'service', 'severity']
+  
+  # How long to wait before sending the first notification
+  group_wait: 30s
+  
+  # How long to wait before sending notification about new alerts added to a group
+  group_interval: 5m
+  
+  # How long to wait before sending a notification again if it has already been sent
+  repeat_interval: 4h
+
+  # Child routes
+  routes:
+    # Critical alerts - immediate notification
+    - receiver: 'critical-alerts'
+      matchers:
+        - severity =~ "critical|emergency"
+      group_wait: 10s
+      group_interval: 1m
+      repeat_interval: 30m
+      continue: true
+
+    # Database alerts
+    - receiver: 'database-team'
+      matchers:
+        - component = "database"
+      group_wait: 30s
+      repeat_interval: 2h
+
+    # Cache/Redis alerts
+    - receiver: 'database-team'
+      matchers:
+        - component = "cache"
+      group_wait: 30s
+      repeat_interval: 2h
+
+    # Infrastructure alerts
+    - receiver: 'infrastructure-team'
+      matchers:
+        - component = "infrastructure"
+      group_wait: 1m
+      repeat_interval: 3h
+
+    # Application alerts
+    - receiver: 'application-team'
+      matchers:
+        - component = "application"
+      group_wait: 30s
+      repeat_interval: 2h
+
+    # Container alerts
+    - receiver: 'devops-team'
+      matchers:
+        - component = "container"
+      group_wait: 1m
+      repeat_interval: 2h
+
+    # Endpoint monitoring alerts
+    - receiver: 'endpoint-team'
+      matchers:
+        - component = "endpoint"
+      group_wait: 2m
+      repeat_interval: 3h
+
+    # SSL certificate alerts
+    - receiver: 'security-team'
+      matchers:
+        - component = "ssl"
+      group_wait: 1h
+      repeat_interval: 24h
+
+    # Prometheus internal alerts
+    - receiver: 'prometheus-team'
+      matchers:
+        - component = "prometheus"
+      group_wait: 5m
+      repeat_interval: 4h
+
+# Inhibition rules - prevent notifications for certain alerts if others are firing
+inhibit_rules:
+  # Inhibit warning if critical is firing
+  - source_matchers:
+      - severity = "critical"
+    target_matchers:
+      - severity = "warning"
+    equal: ['alertname', 'instance']
+
+  # Inhibit endpoint alerts if application is down
+  - source_matchers:
+      - alertname = "ApplicationDown"
+    target_matchers:
+      - component = "endpoint"
+    equal: ['instance']
+
+  # Inhibit container alerts if host is down
+  - source_matchers:
+      - alertname = "PrometheusTargetMissing"
+      - job = "node-exporter"
+    target_matchers:
+      - component = "container"
+
+# Receiver configurations
+receivers:
+  # Default receiver - logs only
+  - name: 'default'
+    webhook_configs:
+      - url: 'http://localhost:9093/api/v1/alerts'
+        send_resolved: true
+
+  # Critical alerts - multiple channels
+  - name: 'critical-alerts'
+    email_configs:
+      - to: 'oncall@example.com'
+        headers:
+          Subject: '[CRITICAL] {{ .GroupLabels.alertname }}'
+        html: |
+          <h2>Critical Alert</h2>
+          <p><strong>Alert:</strong> {{ .GroupLabels.alertname }}</p>
+          <p><strong>Severity:</strong> {{ .GroupLabels.severity }}</p>
+          <p><strong>Summary:</strong> {{ range .Alerts }}{{ .Annotations.summary }}{{ end }}</p>
+          <p><strong>Description:</strong> {{ range .Alerts }}{{ .Annotations.description }}{{ end }}</p>
+        send_resolved: true
+    
+    slack_configs:
+      - channel: '#critical-alerts'
+        title: ':fire: Critical Alert'
+        text: |
+          *Alert:* {{ .GroupLabels.alertname }}
+          *Severity:* {{ .GroupLabels.severity }}
+          {{ range .Alerts }}
+          *Summary:* {{ .Annotations.summary }}
+          *Description:* {{ .Annotations.description }}
+          {{ end }}
+        send_resolved: true
+        color: '{{ if eq .Status "firing" }}danger{{ else }}good{{ end }}'
+    
+    webhook_configs:
+      - url: 'https://your-pagerduty-webhook-url'
+        send_resolved: true
+
+  # Database team notifications
+  - name: 'database-team'
+    email_configs:
+      - to: 'database-team@example.com'
+        headers:
+          Subject: '[{{ .Status | toUpper }}] Database Alert: {{ .GroupLabels.alertname }}'
+        send_resolved: true
+    
+    slack_configs:
+      - channel: '#database-alerts'
+        title: 'Database Alert'
+        text: |
+          *Status:* {{ .Status | toUpper }}
+          *Alert:* {{ .GroupLabels.alertname }}
+          {{ range .Alerts }}
+          *Summary:* {{ .Annotations.summary }}
+          *Description:* {{ .Annotations.description }}
+          *Instance:* {{ .Labels.instance }}
+          {{ end }}
+        send_resolved: true
+
+  # Infrastructure team notifications
+  - name: 'infrastructure-team'
+    email_configs:
+      - to: 'infrastructure@example.com'
+        headers:
+          Subject: '[{{ .Status | toUpper }}] Infrastructure: {{ .GroupLabels.alertname }}'
+        send_resolved: true
+    
+    slack_configs:
+      - channel: '#infrastructure-alerts'
+        title: 'Infrastructure Alert'
+        send_resolved: true
+
+  # Application team notifications
+  - name: 'application-team'
+    email_configs:
+      - to: 'app-team@example.com'
+        headers:
+          Subject: '[{{ .Status | toUpper }}] Application: {{ .GroupLabels.alertname }}'
+        send_resolved: true
+    
+    slack_configs:
+      - channel: '#app-alerts'
+        title: 'Application Alert'
+        send_resolved: true
+
+  # DevOps team notifications
+  - name: 'devops-team'
+    slack_configs:
+      - channel: '#devops-alerts'
+        title: 'Container/DevOps Alert'
+        send_resolved: true
+
+  # Endpoint monitoring team
+  - name: 'endpoint-team'
+    slack_configs:
+      - channel: '#endpoint-alerts'
+        title: 'Endpoint Monitoring Alert'
+        send_resolved: true
+
+  # Security team for SSL issues
+  - name: 'security-team'
+    email_configs:
+      - to: 'security@example.com'
+        headers:
+          Subject: '[{{ .Status | toUpper }}] Security Alert: {{ .GroupLabels.alertname }}'
+        send_resolved: true
+    
+    slack_configs:
+      - channel: '#security-alerts'
+        title: ':lock: Security Alert'
+        send_resolved: true
+
+  # Prometheus operations team
+  - name: 'prometheus-team'
+    slack_configs:
+      - channel: '#monitoring-alerts'
+        title: 'Prometheus Alert'
+        send_resolved: true
