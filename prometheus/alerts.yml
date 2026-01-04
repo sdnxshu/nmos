@@ -1,0 +1,271 @@
+groups:
+  - name: application_alerts
+    interval: 30s
+    rules:
+      # Application is down
+      - alert: ApplicationDown
+        expr: up{job="app"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: application
+        annotations:
+          summary: "Application is down"
+          description: "Application {{ $labels.instance }} has been down for more than 1 minute."
+
+      # High response time
+      - alert: HighResponseTime
+        expr: http_request_duration_seconds{quantile="0.9"} > 1
+        for: 5m
+        labels:
+          severity: warning
+          component: application
+        annotations:
+          summary: "High response time detected"
+          description: "90th percentile response time is {{ $value }}s on {{ $labels.instance }}"
+
+  - name: infrastructure_alerts
+    interval: 30s
+    rules:
+      # High CPU usage
+      - alert: HighCPUUsage
+        expr: 100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+          component: infrastructure
+        annotations:
+          summary: "High CPU usage detected"
+          description: "CPU usage is above 80% on {{ $labels.instance }} (current value: {{ $value }}%)"
+
+      # Critical CPU usage
+      - alert: CriticalCPUUsage
+        expr: 100 - (avg by(instance) (irate(node_cpu_seconds_total{mode="idle"}[5m])) * 100) > 95
+        for: 2m
+        labels:
+          severity: critical
+          component: infrastructure
+        annotations:
+          summary: "Critical CPU usage detected"
+          description: "CPU usage is above 95% on {{ $labels.instance }} (current value: {{ $value }}%)"
+
+      # High memory usage
+      - alert: HighMemoryUsage
+        expr: (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+          component: infrastructure
+        annotations:
+          summary: "High memory usage detected"
+          description: "Memory usage is above 80% on {{ $labels.instance }} (current value: {{ $value }}%)"
+
+      # Critical memory usage
+      - alert: CriticalMemoryUsage
+        expr: (node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes) / node_memory_MemTotal_bytes * 100 > 95
+        for: 2m
+        labels:
+          severity: critical
+          component: infrastructure
+        annotations:
+          summary: "Critical memory usage detected"
+          description: "Memory usage is above 95% on {{ $labels.instance }} (current value: {{ $value }}%)"
+
+      # High disk usage
+      - alert: HighDiskUsage
+        expr: (node_filesystem_size_bytes{fstype!~"tmpfs|fuse.lxcfs|squashfs|vfat"} - node_filesystem_avail_bytes) / node_filesystem_size_bytes * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+          component: infrastructure
+        annotations:
+          summary: "High disk usage detected"
+          description: "Disk usage is above 80% on {{ $labels.instance }} {{ $labels.mountpoint }} (current value: {{ $value }}%)"
+
+      # Critical disk usage
+      - alert: CriticalDiskUsage
+        expr: (node_filesystem_size_bytes{fstype!~"tmpfs|fuse.lxcfs|squashfs|vfat"} - node_filesystem_avail_bytes) / node_filesystem_size_bytes * 100 > 95
+        for: 2m
+        labels:
+          severity: critical
+          component: infrastructure
+        annotations:
+          summary: "Critical disk usage detected"
+          description: "Disk usage is above 95% on {{ $labels.instance }} {{ $labels.mountpoint }} (current value: {{ $value }}%)"
+
+      # Host out of inodes
+      - alert: HostOutOfInodes
+        expr: node_filesystem_files_free{fstype!~"tmpfs|fuse.lxcfs|squashfs|vfat"} / node_filesystem_files{fstype!~"tmpfs|fuse.lxcfs|squashfs|vfat"} * 100 < 10
+        for: 5m
+        labels:
+          severity: warning
+          component: infrastructure
+        annotations:
+          summary: "Host out of inodes"
+          description: "Filesystem is running out of inodes on {{ $labels.instance }} {{ $labels.mountpoint }} (< 10% left)"
+
+  - name: container_alerts
+    interval: 30s
+    rules:
+      # Container high CPU usage
+      - alert: ContainerHighCPUUsage
+        expr: (sum by(name, instance) (rate(container_cpu_usage_seconds_total{name!=""}[5m])) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+          component: container
+        annotations:
+          summary: "Container high CPU usage"
+          description: "Container {{ $labels.name }} on {{ $labels.instance }} is using {{ $value }}% CPU"
+
+      # Container high memory usage
+      - alert: ContainerHighMemoryUsage
+        expr: (sum by(name, instance) (container_memory_usage_bytes{name!=""}) / sum by(name, instance) (container_spec_memory_limit_bytes{name!=""}) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+          component: container
+        annotations:
+          summary: "Container high memory usage"
+          description: "Container {{ $labels.name }} on {{ $labels.instance }} is using {{ $value }}% memory"
+
+      # Container killed
+      - alert: ContainerKilled
+        expr: time() - container_last_seen{name!=""} > 60
+        for: 1m
+        labels:
+          severity: critical
+          component: container
+        annotations:
+          summary: "Container killed"
+          description: "Container {{ $labels.name }} on {{ $labels.instance }} has disappeared"
+
+  - name: endpoint_alerts
+    interval: 30s
+    rules:
+      # Endpoint down
+      - alert: EndpointDown
+        expr: probe_success == 0
+        for: 2m
+        labels:
+          severity: critical
+          component: endpoint
+        annotations:
+          summary: "Endpoint down"
+          description: "Endpoint {{ $labels.instance }} is down"
+
+      # SSL certificate expiring soon (30 days)
+      - alert: SSLCertificateExpiringSoon
+        expr: probe_ssl_earliest_cert_expiry - time() < 86400 * 30
+        for: 1h
+        labels:
+          severity: warning
+          component: ssl
+        annotations:
+          summary: "SSL certificate expiring soon"
+          description: "SSL certificate for {{ $labels.instance }} will expire in {{ $value | humanizeDuration }}"
+
+      # SSL certificate expiring very soon (7 days)
+      - alert: SSLCertificateExpiringVerySoon
+        expr: probe_ssl_earliest_cert_expiry - time() < 86400 * 7
+        for: 1h
+        labels:
+          severity: critical
+          component: ssl
+        annotations:
+          summary: "SSL certificate expiring very soon"
+          description: "SSL certificate for {{ $labels.instance }} will expire in {{ $value | humanizeDuration }}"
+
+      # Slow probe
+      - alert: SlowProbe
+        expr: avg_over_time(probe_duration_seconds[5m]) > 1
+        for: 5m
+        labels:
+          severity: warning
+          component: endpoint
+        annotations:
+          summary: "Slow probe detected"
+          description: "Probe duration for {{ $labels.instance }} is {{ $value }}s"
+
+  - name: prometheus_alerts
+    interval: 30s
+    rules:
+      # Prometheus config reload failed
+      - alert: PrometheusConfigReloadFailed
+        expr: prometheus_config_last_reload_successful == 0
+        for: 5m
+        labels:
+          severity: critical
+          component: prometheus
+        annotations:
+          summary: "Prometheus configuration reload failed"
+          description: "Prometheus configuration reload has failed on {{ $labels.instance }}"
+
+      # Prometheus too many restarts
+      - alert: PrometheusTooManyRestarts
+        expr: changes(process_start_time_seconds{job="prometheus"}[15m]) > 2
+        for: 5m
+        labels:
+          severity: warning
+          component: prometheus
+        annotations:
+          summary: "Prometheus too many restarts"
+          description: "Prometheus has restarted {{ $value }} times in the last 15 minutes"
+
+      # Prometheus target missing
+      - alert: PrometheusTargetMissing
+        expr: up == 0
+        for: 5m
+        labels:
+          severity: warning
+          component: prometheus
+        annotations:
+          summary: "Prometheus target missing"
+          description: "Target {{ $labels.job }} on {{ $labels.instance }} is down"
+
+  - name: database_alerts
+    interval: 30s
+    rules:
+      # PostgreSQL down
+      - alert: PostgreSQLDown
+        expr: pg_up == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: database
+        annotations:
+          summary: "PostgreSQL is down"
+          description: "PostgreSQL instance {{ $labels.instance }} is down"
+
+      # PostgreSQL too many connections
+      - alert: PostgreSQLTooManyConnections
+        expr: sum by(instance) (pg_stat_activity_count) > 80
+        for: 5m
+        labels:
+          severity: warning
+          component: database
+        annotations:
+          summary: "PostgreSQL too many connections"
+          description: "PostgreSQL instance {{ $labels.instance }} has {{ $value }} connections"
+
+      # Redis down
+      - alert: RedisDown
+        expr: redis_up == 0
+        for: 1m
+        labels:
+          severity: critical
+          component: cache
+        annotations:
+          summary: "Redis is down"
+          description: "Redis instance {{ $labels.instance }} is down"
+
+      # Redis high memory usage
+      - alert: RedisHighMemoryUsage
+        expr: redis_memory_used_bytes / redis_memory_max_bytes * 100 > 90
+        for: 5m
+        labels:
+          severity: warning
+          component: cache
+        annotations:
+          summary: "Redis high memory usage"
+          description: "Redis instance {{ $labels.instance }} is using {{ $value }}% of its memory"
